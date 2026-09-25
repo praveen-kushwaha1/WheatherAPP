@@ -17,9 +17,9 @@ public class AppConfig {
      *
      * Cache data is stored inside the application's JVM memory.
      */
-    @Bean
-    public CacheManager cacheManager() {
-
-        return new ConcurrentMapCacheManager("weather");
-    }
+//    @Bean
+//    public CacheManager cacheManager() {
+//
+//        return new ConcurrentMapCacheManager("weather");
+//    }
 }
