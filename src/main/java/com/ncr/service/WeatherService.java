@@ -42,7 +42,7 @@ public class WeatherService {
 
         return weather
                 .map(Weather::getForecast)
-                .orElse("Weather data not available");
+                .orElse("weather data not available");
     }
 
 
