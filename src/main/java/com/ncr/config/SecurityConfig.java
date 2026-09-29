@@ -1,5 +1,6 @@
 package com.ncr.config;
 
+import com.ncr.filters.JwtAuthFilter;
 import com.ncr.service.CustomUserDetailsService;
 
 import org.springframework.context.annotation.Bean;
@@ -19,34 +20,59 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import org.springframework.security.web.SecurityFilterChain;
-
-import static org.springframework.security.config.Customizer.withDefaults;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 
 /*
  * @Configuration
- * Marks this class as a Spring configuration class.
+ * → Marks this class as a Spring configuration class.
  *
  * @EnableWebSecurity
- * Enables Spring Security's web security support.
+ * → Enables Spring Security's web security support.
+ *
+ * Main responsibility:
+ * → Configure authentication
+ * → Configure authorization
+ * → Configure password encoding
+ * → Configure JWT filter
  */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private final JwtAuthFilter jwtAuthFilter;
+    private final CustomUserDetailsService customUserDetailsService;
+
+    /*
+     * Constructor Injection:
+     *
+     * Spring automatically provides:
+     *
+     * JwtAuthFilter
+     * CustomUserDetailsService
+     *
+     * Constructor injection is preferred over field injection
+     * because dependencies can be final and clearly defined.
+     */
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, CustomUserDetailsService customUserDetailsService) {
+
+        this.jwtAuthFilter = jwtAuthFilter;
+        this.customUserDetailsService = customUserDetailsService;
+    }
+
 
     /*
      * ============================================================
-     * SecurityFilterChain
+     * SECURITY FILTER CHAIN
      * ============================================================
      *
-     * Defines the security rules for incoming HTTP requests.
-     *
-     * Flow:
+     * Defines security rules for incoming HTTP requests.
      *
      * Request
      *    ↓
-     * Spring Security Filters
+     * Spring Security Filter Chain
+     *    ↓
+     * JwtAuthFilter
      *    ↓
      * Authentication
      *    ↓
@@ -54,25 +80,46 @@ public class SecurityConfig {
      *    ↓
      * Controller
      *
+     * /authenticate/** → Public
+     *                    Used to login and generate JWT.
+     *
+     * /h2-console/**   → Public
+     *                    Useful only for local H2 testing.
+     *
+     * anyRequest()     → Requires authentication.
+     *
      * csrf().disable()
-     * → Disables CSRF protection for this REST API example.
+     * → Common for stateless REST APIs using JWT in the
+     *   Authorization header.
      *
-     * requestMatchers().permitAll()
-     * → Allows the specified endpoint without authentication.
-     *
-     * anyRequest().authenticated()
-     * → All other endpoints require authentication.
-     *
-     * httpBasic()
-     * → Enables HTTP Basic Authentication.
+     * IMPORTANT:
+     * JWT authentication is handled by JwtAuthFilter.
      */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
         http.csrf(AbstractHttpConfigurer::disable)
+
                 .authorizeHttpRequests(auth -> auth
+
+                        // Public endpoint for JWT login
+                        .requestMatchers("/authenticate/**").permitAll()
+
+                        // Public H2 console for local development
                         .requestMatchers("/h2-console/**").permitAll()
+
+                        // Every other endpoint requires authentication
                         .anyRequest().authenticated())
-                .httpBasic(withDefaults());
+
+                /*
+                 * Add JWT filter before Spring Security's
+                 * UsernamePasswordAuthenticationFilter.
+                 *
+                 * Why before?
+                 *
+                 * JWT must be processed before the request
+                 * reaches protected controller endpoints.
+                 */.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -80,97 +127,110 @@ public class SecurityConfig {
 
     /*
      * ============================================================
-     * UserDetailsService
+     * USER DETAILS SERVICE
      * ============================================================
      *
-     * Responsible for loading user information.
+     * UserDetailsService is responsible for loading user
+     * information during authentication.
      *
-     * Spring Security asks:
+     * Flow:
      *
-     * "Give me the details of this username."
+     * username
+     *    ↓
+     * CustomUserDetailsService
+     *    ↓
+     * Repository
+     *    ↓
+     * Database
+     *    ↓
+     * UserDetails
      *
-     * CustomUserDetailsService can load the user from a database.
+     * CustomUserDetailsService should normally be annotated
+     * with @Service.
      */
     @Bean
     public UserDetailsService userDetailsService() {
-        return new CustomUserDetailsService();
+
+        return customUserDetailsService;
     }
 
 
     /*
      * ============================================================
-     * PasswordEncoder
+     * PASSWORD ENCODER
      * ============================================================
      *
-     * Used to securely hash and verify passwords.
+     * BCrypt is used to securely hash passwords.
      *
-     * BCrypt is a one-way password hashing algorithm.
+     * IMPORTANT:
      *
-     * Database should store:
+     * Plain password:
+     *     password
      *
-     * BCrypt password
+     * Database:
+     *     $2a$10$........
      *
-     * NOT:
+     * BCrypt is one-way.
+     * The password is NOT decrypted.
      *
-     * Plain-text password
+     * During login:
+     *
+     * Raw Password
+     *      +
+     * Stored BCrypt Password
+     *      ↓
+     * PasswordEncoder
+     *      ↓
+     * Match / No Match
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
+
         return new BCryptPasswordEncoder();
     }
 
 
     /*
      * ============================================================
-     * AuthenticationManager
+     * AUTHENTICATION MANAGER
      * ============================================================
      *
-     * Main component responsible for authentication.
+     * AuthenticationManager is the main entry point for
+     * username/password authentication.
+     *
+     * Flow:
      *
      * AuthenticationManager
-     *        ↓
+     *          ↓
+     * ProviderManager
+     *          ↓
      * DaoAuthenticationProvider
-     *        ↓
+     *          ↓
      * UserDetailsService
-     *        +
+     *          ↓
+     * Database
+     *          +
      * PasswordEncoder
+     *          ↓
+     * Authentication Success / Failure
+     *
+     * ProviderManager:
+     * → Implementation of AuthenticationManager.
      *
      * DaoAuthenticationProvider:
      * → Loads user using UserDetailsService.
      * → Verifies password using PasswordEncoder.
-     *
-     * ProviderManager:
-     * → Implementation of AuthenticationManager.
-     * → Delegates authentication to AuthenticationProvider.
      */
     @Bean
     public AuthenticationManager authenticationManager(UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
 
-        DaoAuthenticationProvider daoAuthenticationProvider = new DaoAuthenticationProvider();
+        DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider();
 
-        daoAuthenticationProvider.setUserDetailsService(userDetailsService);
+        authenticationProvider.setUserDetailsService(userDetailsService);
 
-        daoAuthenticationProvider.setPasswordEncoder(passwordEncoder);
+        authenticationProvider.setPasswordEncoder(passwordEncoder);
 
-        return new ProviderManager(daoAuthenticationProvider);
+        return new ProviderManager(authenticationProvider);
     }
 }
 
-/*
-        HTTP Request
-     ↓
-        SecurityFilterChain
-     ↓
-        AuthenticationManager
-     ↓
-        DaoAuthenticationProvider
-     ↓
-        UserDetailsService → Find User
-     ↓
-        PasswordEncoder → Verify Password
-     ↓
-        Authentication Success
-     ↓
-        Controller
-
-        */
