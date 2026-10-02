@@ -1,7 +1,7 @@
 
 package com.ncr.controller;
 
-import com.ncr.entity.AuthRequest;
+import com.ncr.dto.AuthRequest;
 import com.ncr.util.JWTUtil;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
