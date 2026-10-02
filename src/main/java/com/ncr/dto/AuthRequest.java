@@ -1,4 +1,4 @@
-package com.ncr.entity;
+package com.ncr.dto;
 
 public class AuthRequest {
     private String username;

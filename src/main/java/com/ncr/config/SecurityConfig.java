@@ -1,11 +1,13 @@
 package com.ncr.config;
 
+import com.ncr.dto.Permissions;
 import com.ncr.filters.JwtAuthFilter;
 import com.ncr.service.CustomUserDetailsService;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -107,6 +109,9 @@ public class SecurityConfig {
 
                         // Public H2 console for local development
                         .requestMatchers("/h2-console/**").permitAll()
+                        .requestMatchers(HttpMethod.GET,"/weather/**").hasAuthority(Permissions.WEATHER_READ.name())
+                        .requestMatchers(HttpMethod.POST,"/weather/**").hasAuthority(Permissions.WEATHER_WRITE.name())
+                        .requestMatchers(HttpMethod.DELETE,"/weather/**").hasAuthority(Permissions.WEATHER_DELETE.name())
 
                         // Every other endpoint requires authentication
                         .anyRequest().authenticated())
